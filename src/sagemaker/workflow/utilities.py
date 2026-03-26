@@ -94,7 +94,7 @@ def step_compilation_context_manager(
     upload_runtime_scripts: bool,
     upload_workspace: bool,
     pipeline_build_time: str,
-    function_step_secret_token: Optional[str] = None,
+    function_step_secret_token=None,
 ):
     """Expose static _pipeline_config variable to other modules
 
@@ -111,7 +111,8 @@ def step_compilation_context_manager(
         upload_workspace (bool): flag used to manage the upload of workspace to s3 for a
           _FunctionStep in pipeline
         pipeline_build_time (str): timestamp when the pipeline is being built
-        function_step_secret_token (str): secret token used for the function step checksum
+        function_step_secret_token (EllipticCurvePrivateKey): private key used for asymmetric
+          signing of function step payloads
     """
 
     # pylint: disable=W0603

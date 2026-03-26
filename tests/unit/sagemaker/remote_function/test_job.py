@@ -17,6 +17,7 @@ import sys
 
 import tempfile
 import pytest
+from cryptography.hazmat.primitives.asymmetric import ec
 from mock import patch, Mock, ANY, mock_open
 from mock.mock import MagicMock
 
@@ -266,6 +267,7 @@ TEST_RUN_DISPLAY_NAME = "my-run-display-name"
 TEST_TAGS = [{"Key": "some-key", "Value": "some-value"}]
 
 _DEFINITION_CONFIG = PipelineDefinitionConfig(use_custom_job_prefix=False)
+_PIPELINE_PRIVATE_KEY = ec.generate_private_key(ec.SECP256R1())
 MOCKED_PIPELINE_CONFIG = _PipelineConfig(
     TEST_PIPELINE_NAME,
     "test-function-step",
@@ -276,7 +278,7 @@ MOCKED_PIPELINE_CONFIG = _PipelineConfig(
     sagemaker_timestamp(),
     True,
     True,
-    "token-from-pipeline",
+    _PIPELINE_PRIVATE_KEY,
 )
 
 
@@ -542,7 +544,6 @@ def test_sagemaker_config_job_settings_studio_image_uri(get_execution_role, sess
 
 
 @patch("sagemaker.experiments._run_context._RunContext.get_current_run", new=mock_get_current_run)
-@patch("secrets.token_hex", return_value=HMAC_KEY)
 @patch("sagemaker.remote_function.job._prepare_and_upload_workspace", return_value="some_s3_uri")
 @patch(
     "sagemaker.remote_function.job._prepare_and_upload_runtime_scripts", return_value="some_s3_uri"
@@ -556,7 +557,7 @@ def test_start(
     mock_runtime_manager,
     mock_script_upload,
     mock_dependency_upload,
-    secret_token,
+
 ):
 
     job_settings = _JobSettings(
@@ -575,7 +576,7 @@ def test_start(
     mock_stored_function.assert_called_once_with(
         sagemaker_session=session(),
         s3_base_uri=f"{S3_URI}/{job.job_name}",
-        hmac_key=HMAC_KEY,
+        signing_key=ANY,
         s3_kms_key=None,
     )
 
@@ -662,12 +663,11 @@ def test_start(
         EnableNetworkIsolation=False,
         EnableInterContainerTrafficEncryption=True,
         EnableManagedSpotTraining=False,
-        Environment={"AWS_DEFAULT_REGION": "us-west-2", "REMOTE_FUNCTION_SECRET_KEY": HMAC_KEY},
+        Environment={"AWS_DEFAULT_REGION": "us-west-2", "REMOTE_FUNCTION_SECRET_KEY": ANY},
     )
 
 
 @patch("sagemaker.experiments._run_context._RunContext.get_current_run", new=mock_get_current_run)
-@patch("secrets.token_hex", return_value=HMAC_KEY)
 @patch("sagemaker.remote_function.job._prepare_and_upload_workspace", return_value="some_s3_uri")
 @patch(
     "sagemaker.remote_function.job._prepare_and_upload_runtime_scripts", return_value="some_s3_uri"
@@ -681,7 +681,7 @@ def test_start_with_checkpoint_location(
     mock_runtime_manager,
     mock_script_upload,
     mock_user_workspace_upload,
-    secret_token,
+
 ):
 
     job_settings = _JobSettings(
@@ -707,7 +707,7 @@ def test_start_with_checkpoint_location(
     mock_stored_function.assert_called_once_with(
         sagemaker_session=session(),
         s3_base_uri=f"{S3_URI}/{job.job_name}",
-        hmac_key=HMAC_KEY,
+        signing_key=ANY,
         s3_kms_key=None,
     )
 
@@ -779,7 +779,7 @@ def test_start_with_checkpoint_location(
         EnableNetworkIsolation=False,
         EnableInterContainerTrafficEncryption=True,
         EnableManagedSpotTraining=False,
-        Environment={"AWS_DEFAULT_REGION": "us-west-2", "REMOTE_FUNCTION_SECRET_KEY": HMAC_KEY},
+        Environment={"AWS_DEFAULT_REGION": "us-west-2", "REMOTE_FUNCTION_SECRET_KEY": ANY},
     )
 
 
@@ -819,7 +819,6 @@ def test_start_with_checkpoint_location_failed_with_multiple_checkpoint_location
         )
 
 
-@patch("secrets.token_hex", return_value=HMAC_KEY)
 @patch("sagemaker.remote_function.job._prepare_and_upload_workspace", return_value="some_s3_uri")
 @patch(
     "sagemaker.remote_function.job._prepare_and_upload_runtime_scripts", return_value="some_s3_uri"
@@ -833,7 +832,7 @@ def test_start_with_complete_job_settings(
     mock_runtime_manager,
     mock_bootstrap_script_upload,
     mock_user_workspace_upload,
-    secret_token,
+
 ):
 
     job_settings = _JobSettings(
@@ -860,7 +859,7 @@ def test_start_with_complete_job_settings(
     mock_stored_function.assert_called_once_with(
         sagemaker_session=session(),
         s3_base_uri=f"{S3_URI}/{job.job_name}",
-        hmac_key=HMAC_KEY,
+        signing_key=ANY,
         s3_kms_key=KMS_KEY_ARN,
     )
 
@@ -949,12 +948,11 @@ def test_start_with_complete_job_settings(
         EnableInterContainerTrafficEncryption=False,
         VpcConfig=dict(Subnets=["subnet"], SecurityGroupIds=["sg"]),
         EnableManagedSpotTraining=False,
-        Environment={"AWS_DEFAULT_REGION": "us-west-2", "REMOTE_FUNCTION_SECRET_KEY": HMAC_KEY},
+        Environment={"AWS_DEFAULT_REGION": "us-west-2", "REMOTE_FUNCTION_SECRET_KEY": ANY},
     )
 
 
 @patch("sagemaker.workflow.utilities._pipeline_config", MOCKED_PIPELINE_CONFIG)
-@patch("secrets.token_hex", MagicMock(return_value=HMAC_KEY))
 @patch(
     "sagemaker.remote_function.job._prepare_dependencies_and_pre_execution_scripts",
     return_value="some_s3_uri",
@@ -1027,7 +1025,7 @@ def test_get_train_args_under_pipeline_context(
     mock_stored_function_ctr.assert_called_once_with(
         sagemaker_session=session(),
         s3_base_uri=s3_base_uri,
-        hmac_key="token-from-pipeline",
+        signing_key=ANY,
         s3_kms_key=KMS_KEY_ARN,
         context=Context(
             step_name=MOCKED_PIPELINE_CONFIG.step_name,
@@ -1162,12 +1160,11 @@ def test_get_train_args_under_pipeline_context(
         EnableManagedSpotTraining=False,
         Environment={
             "AWS_DEFAULT_REGION": "us-west-2",
-            "REMOTE_FUNCTION_SECRET_KEY": "token-from-pipeline",
+            "REMOTE_FUNCTION_SECRET_KEY": ANY,
         },
     )
 
 
-@patch("secrets.token_hex", return_value=HMAC_KEY)
 @patch(
     "sagemaker.remote_function.job._JobSettings._get_default_spark_image",
     return_value="some_image_uri",
@@ -1192,7 +1189,7 @@ def test_start_with_spark(
     mock_dependency_upload,
     mock_spark_dependency_upload,
     mock_get_default_spark_image,
-    secrete_token,
+
 ):
     spark_config = SparkConfig()
     job_settings = _JobSettings(
@@ -1301,7 +1298,7 @@ def test_start_with_spark(
         EnableNetworkIsolation=False,
         EnableInterContainerTrafficEncryption=True,
         EnableManagedSpotTraining=False,
-        Environment={"AWS_DEFAULT_REGION": "us-west-2", "REMOTE_FUNCTION_SECRET_KEY": HMAC_KEY},
+        Environment={"AWS_DEFAULT_REGION": "us-west-2", "REMOTE_FUNCTION_SECRET_KEY": ANY},
     )
 
 
@@ -1834,7 +1831,6 @@ def test_extend_spark_config_to_request(
 
 
 @patch("sagemaker.experiments._run_context._RunContext.get_current_run", new=mock_get_current_run)
-@patch("secrets.token_hex", return_value=HMAC_KEY)
 @patch("sagemaker.remote_function.job._prepare_and_upload_workspace", return_value="some_s3_uri")
 @patch(
     "sagemaker.remote_function.job._prepare_and_upload_runtime_scripts", return_value="some_s3_uri"
@@ -1848,7 +1844,7 @@ def test_start_with_torchrun_single_node(
     mock_runtime_manager,
     mock_script_upload,
     mock_dependency_upload,
-    secret_token,
+
 ):
 
     job_settings = _JobSettings(
@@ -1869,7 +1865,7 @@ def test_start_with_torchrun_single_node(
     mock_stored_function.assert_called_once_with(
         sagemaker_session=session(),
         s3_base_uri=f"{S3_URI}/{job.job_name}",
-        hmac_key=HMAC_KEY,
+        signing_key=ANY,
         s3_kms_key=None,
     )
 
@@ -1958,12 +1954,11 @@ def test_start_with_torchrun_single_node(
         EnableNetworkIsolation=False,
         EnableInterContainerTrafficEncryption=True,
         EnableManagedSpotTraining=False,
-        Environment={"AWS_DEFAULT_REGION": "us-west-2", "REMOTE_FUNCTION_SECRET_KEY": HMAC_KEY},
+        Environment={"AWS_DEFAULT_REGION": "us-west-2", "REMOTE_FUNCTION_SECRET_KEY": ANY},
     )
 
 
 @patch("sagemaker.experiments._run_context._RunContext.get_current_run", new=mock_get_current_run)
-@patch("secrets.token_hex", return_value=HMAC_KEY)
 @patch("sagemaker.remote_function.job._prepare_and_upload_workspace", return_value="some_s3_uri")
 @patch(
     "sagemaker.remote_function.job._prepare_and_upload_runtime_scripts", return_value="some_s3_uri"
@@ -1977,7 +1972,7 @@ def test_start_with_torchrun_multi_node(
     mock_runtime_manager,
     mock_script_upload,
     mock_dependency_upload,
-    secret_token,
+
 ):
 
     job_settings = _JobSettings(
@@ -1999,7 +1994,7 @@ def test_start_with_torchrun_multi_node(
     mock_stored_function.assert_called_once_with(
         sagemaker_session=session(),
         s3_base_uri=f"{S3_URI}/{job.job_name}",
-        hmac_key=HMAC_KEY,
+        signing_key=ANY,
         s3_kms_key=None,
     )
 
@@ -2090,7 +2085,7 @@ def test_start_with_torchrun_multi_node(
         EnableNetworkIsolation=False,
         EnableInterContainerTrafficEncryption=True,
         EnableManagedSpotTraining=False,
-        Environment={"AWS_DEFAULT_REGION": "us-west-2", "REMOTE_FUNCTION_SECRET_KEY": HMAC_KEY},
+        Environment={"AWS_DEFAULT_REGION": "us-west-2", "REMOTE_FUNCTION_SECRET_KEY": ANY},
     )
 
 
@@ -2355,7 +2350,6 @@ def test_set_env_multi_node_multi_gpu_mpirun(
 
 
 @patch("sagemaker.experiments._run_context._RunContext.get_current_run", new=mock_get_current_run)
-@patch("secrets.token_hex", return_value=HMAC_KEY)
 @patch("sagemaker.remote_function.job._prepare_and_upload_workspace", return_value="some_s3_uri")
 @patch(
     "sagemaker.remote_function.job._prepare_and_upload_runtime_scripts", return_value="some_s3_uri"
@@ -2369,7 +2363,7 @@ def test_start_with_torchrun_single_node_with_nproc_per_node(
     mock_runtime_manager,
     mock_script_upload,
     mock_dependency_upload,
-    secret_token,
+
 ):
 
     job_settings = _JobSettings(
@@ -2391,7 +2385,7 @@ def test_start_with_torchrun_single_node_with_nproc_per_node(
     mock_stored_function.assert_called_once_with(
         sagemaker_session=session(),
         s3_base_uri=f"{S3_URI}/{job.job_name}",
-        hmac_key=HMAC_KEY,
+        signing_key=ANY,
         s3_kms_key=None,
     )
 
@@ -2482,12 +2476,11 @@ def test_start_with_torchrun_single_node_with_nproc_per_node(
         EnableNetworkIsolation=False,
         EnableInterContainerTrafficEncryption=True,
         EnableManagedSpotTraining=False,
-        Environment={"AWS_DEFAULT_REGION": "us-west-2", "REMOTE_FUNCTION_SECRET_KEY": HMAC_KEY},
+        Environment={"AWS_DEFAULT_REGION": "us-west-2", "REMOTE_FUNCTION_SECRET_KEY": ANY},
     )
 
 
 @patch("sagemaker.experiments._run_context._RunContext.get_current_run", new=mock_get_current_run)
-@patch("secrets.token_hex", return_value=HMAC_KEY)
 @patch("sagemaker.remote_function.job._prepare_and_upload_workspace", return_value="some_s3_uri")
 @patch(
     "sagemaker.remote_function.job._prepare_and_upload_runtime_scripts", return_value="some_s3_uri"
@@ -2501,7 +2494,7 @@ def test_start_with_mpirun_single_node_with_nproc_per_node(
     mock_runtime_manager,
     mock_script_upload,
     mock_dependency_upload,
-    secret_token,
+
 ):
 
     job_settings = _JobSettings(
@@ -2523,7 +2516,7 @@ def test_start_with_mpirun_single_node_with_nproc_per_node(
     mock_stored_function.assert_called_once_with(
         sagemaker_session=session(),
         s3_base_uri=f"{S3_URI}/{job.job_name}",
-        hmac_key=HMAC_KEY,
+        signing_key=ANY,
         s3_kms_key=None,
     )
 
@@ -2614,7 +2607,7 @@ def test_start_with_mpirun_single_node_with_nproc_per_node(
         EnableNetworkIsolation=False,
         EnableInterContainerTrafficEncryption=True,
         EnableManagedSpotTraining=False,
-        Environment={"AWS_DEFAULT_REGION": "us-west-2", "REMOTE_FUNCTION_SECRET_KEY": HMAC_KEY},
+        Environment={"AWS_DEFAULT_REGION": "us-west-2", "REMOTE_FUNCTION_SECRET_KEY": ANY},
     )
 
 

@@ -52,7 +52,7 @@ class StoredFunction:
         self,
         sagemaker_session: Session,
         s3_base_uri: str,
-        hmac_key: str,
+        signing_key: str,
         s3_kms_key: str = None,
         context: Context = Context(),
     ):
@@ -63,13 +63,13 @@ class StoredFunction:
                 AWS service calls are delegated to.
             s3_base_uri: the base uri to which serialized artifacts will be uploaded.
             s3_kms_key: KMS key used to encrypt artifacts uploaded to S3.
-            hmac_key: Key used to encrypt serialized and deserialized function and arguments.
+            signing_key: Key used to encrypt serialized and deserialized function and arguments.
             context: Build or run context of a pipeline step.
         """
         self.sagemaker_session = sagemaker_session
         self.s3_base_uri = s3_base_uri
         self.s3_kms_key = s3_kms_key
-        self.hmac_key = hmac_key
+        self.signing_key = signing_key
         self.context = context
 
         self.func_upload_path = s3_path_join(
@@ -98,7 +98,7 @@ class StoredFunction:
             sagemaker_session=self.sagemaker_session,
             s3_uri=s3_path_join(self.func_upload_path, FUNCTION_FOLDER),
             s3_kms_key=self.s3_kms_key,
-            hmac_key=self.hmac_key,
+            private_key=self.signing_key,
         )
 
         logger.info(
@@ -110,7 +110,7 @@ class StoredFunction:
             obj=(args, kwargs),
             sagemaker_session=self.sagemaker_session,
             s3_uri=s3_path_join(self.func_upload_path, ARGUMENTS_FOLDER),
-            hmac_key=self.hmac_key,
+            signing_key=self.signing_key,
             s3_kms_key=self.s3_kms_key,
         )
 
@@ -126,9 +126,9 @@ class StoredFunction:
             "Uploading serialized function code to %s",
             s3_path_join(self.func_upload_path, FUNCTION_FOLDER),
         )
-        serialization._upload_payload_and_metadata_to_s3(
+        serialization._upload_payload_and_metadata_to_s3_signed(
             bytes_to_upload=serialized_data.func,
-            hmac_key=self.hmac_key,
+            private_key=self.signing_key,
             s3_uri=s3_path_join(self.func_upload_path, FUNCTION_FOLDER),
             sagemaker_session=self.sagemaker_session,
             s3_kms_key=self.s3_kms_key,
@@ -138,9 +138,9 @@ class StoredFunction:
             "Uploading serialized function arguments to %s",
             s3_path_join(self.func_upload_path, ARGUMENTS_FOLDER),
         )
-        serialization._upload_payload_and_metadata_to_s3(
+        serialization._upload_payload_and_metadata_to_s3_signed(
             bytes_to_upload=serialized_data.args,
-            hmac_key=self.hmac_key,
+            private_key=self.signing_key,
             s3_uri=s3_path_join(self.func_upload_path, ARGUMENTS_FOLDER),
             sagemaker_session=self.sagemaker_session,
             s3_kms_key=self.s3_kms_key,
@@ -156,7 +156,7 @@ class StoredFunction:
         func = serialization.deserialize_func_from_s3(
             sagemaker_session=self.sagemaker_session,
             s3_uri=s3_path_join(self.func_upload_path, FUNCTION_FOLDER),
-            hmac_key=self.hmac_key,
+            public_key_pem=self.signing_key,
         )
 
         logger.info(
@@ -166,7 +166,7 @@ class StoredFunction:
         args, kwargs = serialization.deserialize_obj_from_s3(
             sagemaker_session=self.sagemaker_session,
             s3_uri=s3_path_join(self.func_upload_path, ARGUMENTS_FOLDER),
-            hmac_key=self.hmac_key,
+            verification_key=self.signing_key,
         )
 
         logger.info("Resolving pipeline variables")
@@ -174,7 +174,6 @@ class StoredFunction:
             self.context,
             args,
             kwargs,
-            hmac_key=self.hmac_key,
             s3_base_uri=self.s3_base_uri,
             sagemaker_session=self.sagemaker_session,
         )
@@ -190,7 +189,7 @@ class StoredFunction:
             obj=result,
             sagemaker_session=self.sagemaker_session,
             s3_uri=s3_path_join(self.results_upload_path, RESULTS_FOLDER),
-            hmac_key=self.hmac_key,
+            signing_key=None,
             s3_kms_key=self.s3_kms_key,
         )
 

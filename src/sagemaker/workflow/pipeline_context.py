@@ -16,7 +16,9 @@ from __future__ import absolute_import
 import warnings
 import inspect
 from functools import wraps
-from typing import Dict, Optional, Callable
+from typing import Dict, Optional, Callable, Union
+
+from cryptography.hazmat.primitives.asymmetric.ec import EllipticCurvePrivateKey
 
 from sagemaker.session import Session, SessionSettings
 from sagemaker.local import LocalSession
@@ -108,7 +110,7 @@ class _PipelineConfig:
         pipeline_build_time: str = None,
         upload_runtime_scripts: bool = True,
         upload_workspace: bool = True,
-        function_step_secret_token: Optional[str] = None,
+        function_step_secret_token: Optional[EllipticCurvePrivateKey] = None,
     ):
         self._pipeline_name = pipeline_name
         self._step_name = step_name
@@ -138,7 +140,7 @@ class _PipelineConfig:
 
     @property
     def function_step_secret_token(self):
-        """str: a secret token for a function step"""
+        """EllipticCurvePrivateKey: a secret token for a function step"""
         return self._function_step_secret_token
 
 

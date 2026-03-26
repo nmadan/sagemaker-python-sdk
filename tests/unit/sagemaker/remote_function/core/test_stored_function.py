@@ -15,6 +15,8 @@ from __future__ import absolute_import
 import pytest
 import random
 import string
+from cryptography.hazmat.primitives.asymmetric import ec
+from cryptography.hazmat.primitives import serialization as crypto_serialization
 from mock import MagicMock, Mock, patch
 from sagemaker.experiments.experiment import Experiment
 from sagemaker.experiments.run import Run
@@ -50,7 +52,18 @@ from tests.unit.sagemaker.experiments.helpers import (
 )
 
 KMS_KEY = "kms-key"
-HMAC_KEY = "some-hmac-key"
+VERIFICATION_KEY = "verification-key"
+
+# EC key pair for tests that exercise the real serialization path
+_PRIVATE_KEY = ec.generate_private_key(ec.SECP256R1())
+_PUBLIC_KEY_PEM = (
+    _PRIVATE_KEY.public_key()
+    .public_bytes(
+        crypto_serialization.Encoding.PEM,
+        crypto_serialization.PublicFormat.SubjectPublicKeyInfo,
+    )
+    .decode("utf-8")
+)
 FUNCTION_FOLDER = "function"
 ARGUMENT_FOLDER = "arguments"
 RESULT_FOLDER = "results"
@@ -96,14 +109,25 @@ def test_save_and_load(s3_source_dir_download, s3_source_dir_upload, args, kwarg
     s3_base_uri = random_s3_uri()
 
     stored_function = StoredFunction(
-        sagemaker_session=session, s3_base_uri=s3_base_uri, s3_kms_key=KMS_KEY, hmac_key=HMAC_KEY
+        sagemaker_session=session,
+        s3_base_uri=s3_base_uri,
+        s3_kms_key=KMS_KEY,
+        signing_key=_PRIVATE_KEY,
     )
     stored_function.save(quadratic, *args, **kwargs)
-    stored_function.load_and_invoke()
 
-    assert deserialize_obj_from_s3(
-        session, s3_uri=f"{s3_base_uri}/results", hmac_key=HMAC_KEY
-    ) == quadratic(*args, **kwargs)
+    # load_and_invoke runs on the job side — uses the public key PEM for verification
+    stored_function_job = StoredFunction(
+        sagemaker_session=session,
+        s3_base_uri=s3_base_uri,
+        s3_kms_key=KMS_KEY,
+        signing_key=_PUBLIC_KEY_PEM,
+    )
+    stored_function_job.load_and_invoke()
+
+    assert deserialize_obj_from_s3(session, s3_uri=f"{s3_base_uri}/results") == quadratic(
+        *args, **kwargs
+    )
 
 
 @patch(
@@ -139,7 +163,10 @@ def test_save_with_parameter_of_run_type(
         sagemaker_session=session,
     )
     stored_function = StoredFunction(
-        sagemaker_session=session, s3_base_uri=s3_base_uri, s3_kms_key=KMS_KEY, hmac_key=HMAC_KEY
+        sagemaker_session=session,
+        s3_base_uri=s3_base_uri,
+        s3_kms_key=KMS_KEY,
+        signing_key=_PRIVATE_KEY,
     )
     with pytest.raises(SerializationError) as e:
         stored_function.save(log_bigger, 1, 2, run)
@@ -165,7 +192,7 @@ def test_save_s3_paths_verification(
         sagemaker_session=session,
         s3_base_uri=s3_base_uri,
         s3_kms_key=KMS_KEY,
-        hmac_key=HMAC_KEY,
+        signing_key=VERIFICATION_KEY,
         context=Context(
             step_name=step_name,
             execution_id=execution_id,
@@ -180,13 +207,13 @@ def test_save_s3_paths_verification(
         sagemaker_session=session,
         s3_uri=(upload_path + FUNCTION_FOLDER),
         s3_kms_key=KMS_KEY,
-        hmac_key=HMAC_KEY,
+        private_key=VERIFICATION_KEY,
     )
     serialize_obj.assert_called_once_with(
         obj=((3,), {}),
         sagemaker_session=session,
         s3_uri=(upload_path + ARGUMENT_FOLDER),
-        hmac_key=HMAC_KEY,
+        signing_key=VERIFICATION_KEY,
         s3_kms_key=KMS_KEY,
     )
 
@@ -226,7 +253,7 @@ def test_load_and_invoke_s3_paths_verification(
         sagemaker_session=session,
         s3_base_uri=s3_base_uri,
         s3_kms_key=KMS_KEY,
-        hmac_key=HMAC_KEY,
+        signing_key=VERIFICATION_KEY,
         context=Context(
             step_name=step_name,
             execution_id=execution_id,
@@ -237,12 +264,12 @@ def test_load_and_invoke_s3_paths_verification(
     stored_function.load_and_invoke()
 
     deserialize_func.assert_called_once_with(
-        sagemaker_session=session, s3_uri=(download_path + FUNCTION_FOLDER), hmac_key=HMAC_KEY
+        sagemaker_session=session, s3_uri=(download_path + FUNCTION_FOLDER), public_key_pem=VERIFICATION_KEY
     )
     deserialize_obj.assert_called_once_with(
         sagemaker_session=session,
         s3_uri=(download_path + ARGUMENT_FOLDER),
-        hmac_key=HMAC_KEY,
+        verification_key=VERIFICATION_KEY,
     )
 
     result = deserialize_func.return_value(
@@ -253,7 +280,7 @@ def test_load_and_invoke_s3_paths_verification(
         obj=result,
         sagemaker_session=session,
         s3_uri=(upload_path + RESULT_FOLDER),
-        hmac_key=HMAC_KEY,
+        signing_key=None,
         s3_kms_key=KMS_KEY,
     )
 
@@ -283,7 +310,7 @@ def test_load_and_invoke_json_serialization(
         sagemaker_session=session,
         s3_base_uri=s3_base_uri,
         s3_kms_key=KMS_KEY,
-        hmac_key=HMAC_KEY,
+        signing_key=VERIFICATION_KEY,
         context=Context(
             serialize_output_to_json=serialize_output_to_json,
         ),
@@ -318,13 +345,13 @@ def test_save_and_load_with_pipeline_variable(monkeypatch):
 
     function_step = _FunctionStep(name="func_1", display_name=None, description=None)
     x = DelayedReturn(function_step=function_step)
-    serialize_obj_to_s3(3.0, session, func1_result_path, HMAC_KEY, KMS_KEY)
+    serialize_obj_to_s3(3.0, session, func1_result_path, s3_kms_key=KMS_KEY)
 
     stored_function = StoredFunction(
         sagemaker_session=session,
         s3_base_uri=s3_base_uri,
         s3_kms_key=KMS_KEY,
-        hmac_key=HMAC_KEY,
+        signing_key=_PRIVATE_KEY,
         context=Context(
             property_references={
                 "Parameters.a": "1.0",
@@ -352,15 +379,33 @@ def test_save_and_load_with_pipeline_variable(monkeypatch):
     )
 
     stored_function.save_pipeline_step_function(test_serialized_data)
-    stored_function.load_and_invoke()
+
+    # load_and_invoke runs on the job side — uses the public key PEM
+    stored_function_job = StoredFunction(
+        sagemaker_session=session,
+        s3_base_uri=s3_base_uri,
+        s3_kms_key=KMS_KEY,
+        signing_key=_PUBLIC_KEY_PEM,
+        context=Context(
+            property_references={
+                "Parameters.a": "1.0",
+                "Parameters.b": "2.0",
+                "Parameters.c": "3.0",
+                "Steps.func_1.OutputDataConfig.S3OutputPath": func1_result_path,
+            },
+            execution_id="execution-id",
+            step_name="func_2",
+        ),
+    )
+    stored_function_job.load_and_invoke()
 
     func2_result_path = f"{s3_base_uri}/execution-id/func_2/results"
-    assert deserialize_obj_from_s3(
-        session, s3_uri=func2_result_path, hmac_key=HMAC_KEY
-    ) == quadratic(3.0, a=1.0, b=2.0, c=3.0)
+    assert deserialize_obj_from_s3(session, s3_uri=func2_result_path) == quadratic(
+        3.0, a=1.0, b=2.0, c=3.0
+    )
 
 
-@patch("sagemaker.remote_function.core.serialization._upload_payload_and_metadata_to_s3")
+@patch("sagemaker.remote_function.core.serialization._upload_payload_and_metadata_to_s3_signed")
 @patch("sagemaker.remote_function.job._JobSettings")
 def test_save_pipeline_step_function(mock_job_settings, upload_payload):
     session = Mock()
@@ -371,7 +416,7 @@ def test_save_pipeline_step_function(mock_job_settings, upload_payload):
         sagemaker_session=session,
         s3_base_uri=s3_base_uri,
         s3_kms_key=KMS_KEY,
-        hmac_key=HMAC_KEY,
+        signing_key=VERIFICATION_KEY,
         context=Context(
             step_name="step_name",
             execution_id="execution_id",

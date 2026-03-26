@@ -147,7 +147,7 @@ def test_main_success_with_pipeline_context(
         sagemaker_session=ANY,
         s3_base_uri=TEST_S3_BASE_URI,
         s3_kms_key=TEST_S3_KMS_KEY,
-        hmac_key=TEST_HMAC_KEY,
+        signing_key=TEST_HMAC_KEY,
         context=Context(
             execution_id=TEST_EXECUTION_ID,
             step_name=TEST_STEP_NAME,
@@ -189,7 +189,6 @@ def test_main_failure(
         sagemaker_session=_get_sagemaker_session(),
         s3_base_uri=TEST_S3_BASE_URI,
         s3_kms_key=TEST_S3_KMS_KEY,
-        hmac_key=TEST_HMAC_KEY,
     )
     _exit_process.assert_called_with(1)
 
@@ -221,6 +220,5 @@ def test_main_failure_with_step(
         sagemaker_session=_get_sagemaker_session(),
         s3_base_uri=s3_uri,
         s3_kms_key=TEST_S3_KMS_KEY,
-        hmac_key=TEST_HMAC_KEY,
     )
     _exit_process.assert_called_with(1)

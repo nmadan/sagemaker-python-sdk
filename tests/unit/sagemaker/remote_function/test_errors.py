@@ -76,7 +76,6 @@ def test_handle_error(
         sagemaker_session=sagemaker_session,
         s3_base_uri=TEST_S3_BASE_URI,
         s3_kms_key=TEST_S3_KMS_KEY,
-        hmac_key=TEST_HMAC_KEY,
     )
 
     assert exit_code == expected_exit_code
@@ -87,6 +86,5 @@ def test_handle_error(
         exc=err,
         sagemaker_session=sagemaker_session,
         s3_uri=TEST_S3_BASE_URI + "exception",
-        hmac_key=TEST_HMAC_KEY,
         s3_kms_key=TEST_S3_KMS_KEY,
     )

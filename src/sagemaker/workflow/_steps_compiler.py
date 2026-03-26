@@ -14,8 +14,9 @@
 from __future__ import absolute_import
 
 import logging
-import secrets
 from typing import Sequence, Union, List
+
+from cryptography.hazmat.primitives.asymmetric import ec
 
 from sagemaker.workflow.entities import RequestType
 from sagemaker.workflow.function_step import _FunctionStep
@@ -188,7 +189,7 @@ class StepsCompiler(object):
         self._all_known_steps = _StepsSet()
         self._build_queue = _BuildQueue()
 
-        self._function_step_secret_token = secrets.token_hex(32)
+        self._function_step_secret_token = ec.generate_private_key(ec.SECP256R1())
 
         self._build_count = 0
         self._steps_need_json_serialization = set()

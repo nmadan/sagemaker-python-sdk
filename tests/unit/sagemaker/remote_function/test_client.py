@@ -1042,9 +1042,7 @@ def test_future_get_result_from_failed_job_remote_error_client_function(
 
     assert future.done()
     mock_job.wait.assert_called_once()
-    mock_deserialize.assert_called_with(
-        sagemaker_session=ANY, s3_uri=f"{S3_URI}/exception", hmac_key=HMAC_KEY
-    )
+    mock_deserialize.assert_called_with(sagemaker_session=ANY, s3_uri=f"{S3_URI}/exception")
 
 
 @patch("sagemaker.s3.S3Downloader.read_bytes")
@@ -1374,7 +1372,6 @@ def test_get_future_completed_job_deserialization_error(mock_session, mock_deser
     mock_deserialize.assert_called_with(
         sagemaker_session=ANY,
         s3_uri="s3://sagemaker-123/image_uri/output/results",
-        hmac_key=HMAC_KEY,
     )
 
 
