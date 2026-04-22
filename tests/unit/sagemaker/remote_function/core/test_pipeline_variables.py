@@ -83,12 +83,13 @@ def test_resolve_delayed_returns(mock_deserializer):
         }
     )
     resolver = _DelayedReturnResolver(
-        delayed_returns=delayed_returns,
+        delayed_returns,
+        "1234",
         properties_resolver=_PropertiesResolver(context),
         parameter_resolver=_ParameterResolver(context),
         execution_variable_resolver=_ExecutionVariableResolver(context),
-        s3_base_uri=f"s3://my-bucket/{PIPELINE_NAME}",
         sagemaker_session=None,
+        s3_base_uri=f"s3://my-bucket/{PIPELINE_NAME}",
     )
 
     assert resolver.resolve(delayed_returns[0]) == 1
@@ -121,12 +122,13 @@ def test_deserializer_fails(mock_deserializer):
     )
     with pytest.raises(Exception, match="Something went wrong"):
         _DelayedReturnResolver(
-            delayed_returns=delayed_returns,
+            delayed_returns,
+            "1234",
             properties_resolver=_PropertiesResolver(context),
             parameter_resolver=_ParameterResolver(context),
             execution_variable_resolver=_ExecutionVariableResolver(context),
-            s3_base_uri=f"s3://my-bucket/{PIPELINE_NAME}",
             sagemaker_session=None,
+            s3_base_uri=f"s3://my-bucket/{PIPELINE_NAME}",
         )
 
 
@@ -147,6 +149,7 @@ def test_no_pipeline_variables_to_resolve(mock_deserializer, func_args, func_kwa
         Context(),
         func_args,
         func_kwargs,
+        hmac_key="1234",
         s3_base_uri="s3://my-bucket",
         sagemaker_session=None,
     )
@@ -272,6 +275,7 @@ def test_resolve_pipeline_variables(
         context,
         func_args,
         func_kwargs,
+        hmac_key="1234",
         s3_base_uri=s3_base_uri,
         sagemaker_session=None,
     )
@@ -281,6 +285,7 @@ def test_resolve_pipeline_variables(
     mock_deserializer.assert_called_once_with(
         sagemaker_session=None,
         s3_uri=s3_results_uri,
+        hmac_key="1234",
     )
 
 
