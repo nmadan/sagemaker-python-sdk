@@ -525,7 +525,6 @@ def test_sagemaker_config_job_settings_studio_image_uri(get_execution_role, sess
     monkeypatch.delenv("SAGEMAKER_INTERNAL_IMAGE_URI")
 
 
-@patch("sagemaker.remote_function.job._ensure_sagemaker_dependency")
 @patch("sagemaker.experiments._run_context._RunContext.get_current_run", new=mock_get_current_run)
 @patch("sagemaker.remote_function.job._prepare_and_upload_workspace", return_value="some_s3_uri")
 @patch(
@@ -540,10 +539,7 @@ def test_start(
     mock_runtime_manager,
     mock_script_upload,
     mock_dependency_upload,
-    mock_ensure_sagemaker,
 ):
-    # Mock returns a fixed temp file path for tests without explicit dependencies
-    mock_ensure_sagemaker.return_value = "/tmp/sagemaker_requirements_test.txt"
 
     job_settings = _JobSettings(
         image_uri=IMAGE,
@@ -566,6 +562,7 @@ def test_start(
 
     mock_stored_function().save.assert_called_once_with(job_function, *(1, 2), **{"c": 3, "d": 4})
 
+    local_dependencies_path = mock_runtime_manager().snapshot()
     mock_python_version = mock_runtime_manager()._current_python_version()
     mock_sagemaker_pysdk_version = mock_runtime_manager()._current_sagemaker_pysdk_version()
 
@@ -579,7 +576,7 @@ def test_start(
     )
 
     mock_dependency_upload.assert_called_once_with(
-        local_dependencies_path="/tmp/sagemaker_requirements_test.txt",
+        local_dependencies_path=local_dependencies_path,
         include_local_workdir=True,
         pre_execution_commands=None,
         pre_execution_script_local_path=None,
@@ -632,7 +629,7 @@ def test_start(
                 "--client_sagemaker_pysdk_version",
                 mock_sagemaker_pysdk_version,
                 "--dependency_settings",
-                '{"dependency_file": "sagemaker_requirements_test.txt"}',
+                '{"dependency_file": null}',
                 "--run_in_context",
                 '{"experiment_name": "my-exp-name", "run_name": "my-run-name"}',
             ],
@@ -650,7 +647,6 @@ def test_start(
     )
 
 
-@patch("sagemaker.remote_function.job._ensure_sagemaker_dependency")
 @patch("sagemaker.experiments._run_context._RunContext.get_current_run", new=mock_get_current_run)
 @patch("sagemaker.remote_function.job._prepare_and_upload_workspace", return_value="some_s3_uri")
 @patch(
@@ -665,10 +661,7 @@ def test_start_with_checkpoint_location(
     mock_runtime_manager,
     mock_script_upload,
     mock_user_workspace_upload,
-    mock_ensure_sagemaker,
 ):
-    # Mock returns a fixed temp file path for tests without explicit dependencies
-    mock_ensure_sagemaker.return_value = "/tmp/sagemaker_requirements_test.txt"
 
     job_settings = _JobSettings(
         image_uri=IMAGE,
@@ -750,7 +743,7 @@ def test_start_with_checkpoint_location(
                 "--client_sagemaker_pysdk_version",
                 mock_sagemaker_pysdk_version,
                 "--dependency_settings",
-                '{"dependency_file": "sagemaker_requirements_test.txt"}',
+                '{"dependency_file": null}',
                 "--run_in_context",
                 '{"experiment_name": "my-exp-name", "run_name": "my-run-name"}',
             ],
@@ -804,7 +797,6 @@ def test_start_with_checkpoint_location_failed_with_multiple_checkpoint_location
         )
 
 
-@patch("sagemaker.remote_function.job._ensure_sagemaker_dependency")
 @patch("sagemaker.remote_function.job._prepare_and_upload_workspace", return_value="some_s3_uri")
 @patch(
     "sagemaker.remote_function.job._prepare_and_upload_runtime_scripts", return_value="some_s3_uri"
@@ -818,14 +810,10 @@ def test_start_with_complete_job_settings(
     mock_runtime_manager,
     mock_bootstrap_script_upload,
     mock_user_workspace_upload,
-    mock_ensure_sagemaker,
 ):
-    # This test has explicit dependencies, so mock returns the same path
-    dependencies_path = "path/to/dependencies/req.txt"
-    mock_ensure_sagemaker.return_value = dependencies_path
 
     job_settings = _JobSettings(
-        dependencies=dependencies_path,
+        dependencies="path/to/dependencies/req.txt",
         pre_execution_script="path/to/script.sh",
         environment_variables={"AWS_DEFAULT_REGION": "us-east-2"},
         image_uri=IMAGE,
@@ -851,6 +839,7 @@ def test_start_with_complete_job_settings(
         s3_kms_key=KMS_KEY_ARN,
     )
 
+    local_dependencies_path = mock_runtime_manager().snapshot()
     mock_python_version = mock_runtime_manager()._current_python_version()
     mock_sagemaker_pysdk_version = mock_runtime_manager()._current_sagemaker_pysdk_version()
 
@@ -864,7 +853,7 @@ def test_start_with_complete_job_settings(
     )
 
     mock_user_workspace_upload.assert_called_once_with(
-        local_dependencies_path=dependencies_path,
+        local_dependencies_path=local_dependencies_path,
         include_local_workdir=False,
         pre_execution_commands=None,
         pre_execution_script_local_path="path/to/script.sh",
@@ -943,7 +932,6 @@ def test_start_with_complete_job_settings(
 
 
 @patch("sagemaker.workflow.utilities._pipeline_config", MOCKED_PIPELINE_CONFIG)
-@patch("sagemaker.remote_function.job._ensure_sagemaker_dependency")
 @patch(
     "sagemaker.remote_function.job._prepare_dependencies_and_pre_execution_scripts",
     return_value="some_s3_uri",
@@ -962,11 +950,7 @@ def test_get_train_args_under_pipeline_context(
     mock_bootstrap_scripts_upload,
     mock_user_workspace_upload,
     mock_user_dependencies_upload,
-    mock_ensure_sagemaker,
 ):
-    # This test has explicit dependencies, so mock returns the same path
-    dependencies_path = "path/to/dependencies/req.txt"
-    mock_ensure_sagemaker.return_value = dependencies_path
 
     from sagemaker.workflow.parameters import ParameterInteger
 
@@ -981,7 +965,7 @@ def test_get_train_args_under_pipeline_context(
     function_step._properties.OutputDataConfig.S3OutputPath = func_step_s3_output_prop
 
     job_settings = _JobSettings(
-        dependencies=dependencies_path,
+        dependencies="path/to/dependencies/req.txt",
         pre_execution_script="path/to/script.sh",
         environment_variables={"AWS_DEFAULT_REGION": "us-east-2"},
         image_uri=IMAGE,
@@ -1042,7 +1026,7 @@ def test_get_train_args_under_pipeline_context(
     )
 
     mock_user_workspace_upload.assert_called_once_with(
-        local_dependencies_path=dependencies_path,
+        local_dependencies_path=local_dependencies_path,
         include_local_workdir=False,
         pre_execution_commands=None,
         pre_execution_script_local_path="path/to/script.sh",
@@ -1164,7 +1148,6 @@ def test_get_train_args_under_pipeline_context(
     "sagemaker.remote_function.job._prepare_and_upload_spark_dependent_files",
     return_value=tuple(["jars_s3_uri", "py_files_s3_uri", "files_s3_uri", "config_file_s3_uri"]),
 )
-@patch("sagemaker.remote_function.job._ensure_sagemaker_dependency")
 @patch("sagemaker.experiments._run_context._RunContext.get_current_run", new=mock_get_current_run)
 @patch("sagemaker.remote_function.job._prepare_and_upload_workspace", return_value="some_s3_uri")
 @patch(
@@ -1179,13 +1162,9 @@ def test_start_with_spark(
     mock_runtime_manager,
     mock_script_upload,
     mock_dependency_upload,
-    mock_ensure_sagemaker,
     mock_spark_dependency_upload,
     mock_get_default_spark_image,
 ):
-    # Mock returns a fixed temp file path for tests without explicit dependencies
-    mock_ensure_sagemaker.return_value = "/tmp/sagemaker_requirements_test.txt"
-
     spark_config = SparkConfig()
     job_settings = _JobSettings(
         spark_config=spark_config,
@@ -1279,7 +1258,7 @@ def test_start_with_spark(
                 "--client_sagemaker_pysdk_version",
                 mock_sagemaker_pysdk_version,
                 "--dependency_settings",
-                '{"dependency_file": "sagemaker_requirements_test.txt"}',
+                '{"dependency_file": null}',
                 "--run_in_context",
                 '{"experiment_name": "my-exp-name", "run_name": "my-run-name"}',
             ],
@@ -1825,7 +1804,6 @@ def test_extend_spark_config_to_request(
     )
 
 
-@patch("sagemaker.remote_function.job._ensure_sagemaker_dependency")
 @patch("sagemaker.experiments._run_context._RunContext.get_current_run", new=mock_get_current_run)
 @patch("sagemaker.remote_function.job._prepare_and_upload_workspace", return_value="some_s3_uri")
 @patch(
@@ -1840,10 +1818,7 @@ def test_start_with_torchrun_single_node(
     mock_runtime_manager,
     mock_script_upload,
     mock_dependency_upload,
-    mock_ensure_sagemaker,
 ):
-    # Mock returns a fixed temp file path for tests without explicit dependencies
-    mock_ensure_sagemaker.return_value = "/tmp/sagemaker_requirements_test.txt"
 
     job_settings = _JobSettings(
         image_uri=IMAGE,
@@ -1868,6 +1843,7 @@ def test_start_with_torchrun_single_node(
 
     mock_stored_function().save.assert_called_once_with(job_function, *(1, 2), **{"c": 3, "d": 4})
 
+    local_dependencies_path = mock_runtime_manager().snapshot()
     mock_python_version = mock_runtime_manager()._current_python_version()
     mock_sagemaker_pysdk_version = mock_runtime_manager()._current_sagemaker_pysdk_version()
 
@@ -1881,7 +1857,7 @@ def test_start_with_torchrun_single_node(
     )
 
     mock_dependency_upload.assert_called_once_with(
-        local_dependencies_path="/tmp/sagemaker_requirements_test.txt",
+        local_dependencies_path=local_dependencies_path,
         include_local_workdir=True,
         pre_execution_commands=None,
         pre_execution_script_local_path=None,
@@ -1934,7 +1910,7 @@ def test_start_with_torchrun_single_node(
                 "--client_sagemaker_pysdk_version",
                 mock_sagemaker_pysdk_version,
                 "--dependency_settings",
-                '{"dependency_file": "sagemaker_requirements_test.txt"}',
+                '{"dependency_file": null}',
                 "--distribution",
                 "torchrun",
                 "--run_in_context",
@@ -1954,7 +1930,6 @@ def test_start_with_torchrun_single_node(
     )
 
 
-@patch("sagemaker.remote_function.job._ensure_sagemaker_dependency")
 @patch("sagemaker.experiments._run_context._RunContext.get_current_run", new=mock_get_current_run)
 @patch("sagemaker.remote_function.job._prepare_and_upload_workspace", return_value="some_s3_uri")
 @patch(
@@ -1969,10 +1944,7 @@ def test_start_with_torchrun_multi_node(
     mock_runtime_manager,
     mock_script_upload,
     mock_dependency_upload,
-    mock_ensure_sagemaker,
 ):
-    # Mock returns a fixed temp file path for tests without explicit dependencies
-    mock_ensure_sagemaker.return_value = "/tmp/sagemaker_requirements_test.txt"
 
     job_settings = _JobSettings(
         image_uri=IMAGE,
@@ -1998,6 +1970,7 @@ def test_start_with_torchrun_multi_node(
 
     mock_stored_function().save.assert_called_once_with(job_function, *(1, 2), **{"c": 3, "d": 4})
 
+    local_dependencies_path = mock_runtime_manager().snapshot()
     mock_python_version = mock_runtime_manager()._current_python_version()
     mock_sagemaker_pysdk_version = mock_runtime_manager()._current_sagemaker_pysdk_version()
 
@@ -2011,7 +1984,7 @@ def test_start_with_torchrun_multi_node(
     )
 
     mock_dependency_upload.assert_called_once_with(
-        local_dependencies_path="/tmp/sagemaker_requirements_test.txt",
+        local_dependencies_path=local_dependencies_path,
         include_local_workdir=True,
         pre_execution_commands=None,
         pre_execution_script_local_path=None,
@@ -2066,7 +2039,7 @@ def test_start_with_torchrun_multi_node(
                 "--client_sagemaker_pysdk_version",
                 mock_sagemaker_pysdk_version,
                 "--dependency_settings",
-                '{"dependency_file": "sagemaker_requirements_test.txt"}',
+                '{"dependency_file": null}',
                 "--distribution",
                 "torchrun",
                 "--run_in_context",
@@ -2346,7 +2319,6 @@ def test_set_env_multi_node_multi_gpu_mpirun(
                 assert env_file == expected_env
 
 
-@patch("sagemaker.remote_function.job._ensure_sagemaker_dependency")
 @patch("sagemaker.experiments._run_context._RunContext.get_current_run", new=mock_get_current_run)
 @patch("sagemaker.remote_function.job._prepare_and_upload_workspace", return_value="some_s3_uri")
 @patch(
@@ -2361,10 +2333,7 @@ def test_start_with_torchrun_single_node_with_nproc_per_node(
     mock_runtime_manager,
     mock_script_upload,
     mock_dependency_upload,
-    mock_ensure_sagemaker,
 ):
-    # Mock returns a fixed temp file path for tests without explicit dependencies
-    mock_ensure_sagemaker.return_value = "/tmp/sagemaker_requirements_test.txt"
 
     job_settings = _JobSettings(
         image_uri=IMAGE,
@@ -2390,6 +2359,7 @@ def test_start_with_torchrun_single_node_with_nproc_per_node(
 
     mock_stored_function().save.assert_called_once_with(job_function, *(1, 2), **{"c": 3, "d": 4})
 
+    local_dependencies_path = mock_runtime_manager().snapshot()
     mock_python_version = mock_runtime_manager()._current_python_version()
     mock_sagemaker_pysdk_version = mock_runtime_manager()._current_sagemaker_pysdk_version()
 
@@ -2403,7 +2373,7 @@ def test_start_with_torchrun_single_node_with_nproc_per_node(
     )
 
     mock_dependency_upload.assert_called_once_with(
-        local_dependencies_path="/tmp/sagemaker_requirements_test.txt",
+        local_dependencies_path=local_dependencies_path,
         include_local_workdir=True,
         pre_execution_commands=None,
         pre_execution_script_local_path=None,
@@ -2456,7 +2426,7 @@ def test_start_with_torchrun_single_node_with_nproc_per_node(
                 "--client_sagemaker_pysdk_version",
                 mock_sagemaker_pysdk_version,
                 "--dependency_settings",
-                '{"dependency_file": "sagemaker_requirements_test.txt"}',
+                '{"dependency_file": null}',
                 "--distribution",
                 "torchrun",
                 "--user_nproc_per_node",
@@ -2478,7 +2448,6 @@ def test_start_with_torchrun_single_node_with_nproc_per_node(
     )
 
 
-@patch("sagemaker.remote_function.job._ensure_sagemaker_dependency")
 @patch("sagemaker.experiments._run_context._RunContext.get_current_run", new=mock_get_current_run)
 @patch("sagemaker.remote_function.job._prepare_and_upload_workspace", return_value="some_s3_uri")
 @patch(
@@ -2493,10 +2462,7 @@ def test_start_with_mpirun_single_node_with_nproc_per_node(
     mock_runtime_manager,
     mock_script_upload,
     mock_dependency_upload,
-    mock_ensure_sagemaker,
 ):
-    # Mock returns a fixed temp file path for tests without explicit dependencies
-    mock_ensure_sagemaker.return_value = "/tmp/sagemaker_requirements_test.txt"
 
     job_settings = _JobSettings(
         image_uri=IMAGE,
@@ -2522,6 +2488,7 @@ def test_start_with_mpirun_single_node_with_nproc_per_node(
 
     mock_stored_function().save.assert_called_once_with(job_function, *(1, 2), **{"c": 3, "d": 4})
 
+    local_dependencies_path = mock_runtime_manager().snapshot()
     mock_python_version = mock_runtime_manager()._current_python_version()
     mock_sagemaker_pysdk_version = mock_runtime_manager()._current_sagemaker_pysdk_version()
 
@@ -2535,7 +2502,7 @@ def test_start_with_mpirun_single_node_with_nproc_per_node(
     )
 
     mock_dependency_upload.assert_called_once_with(
-        local_dependencies_path="/tmp/sagemaker_requirements_test.txt",
+        local_dependencies_path=local_dependencies_path,
         include_local_workdir=True,
         pre_execution_commands=None,
         pre_execution_script_local_path=None,
@@ -2588,7 +2555,7 @@ def test_start_with_mpirun_single_node_with_nproc_per_node(
                 "--client_sagemaker_pysdk_version",
                 mock_sagemaker_pysdk_version,
                 "--dependency_settings",
-                '{"dependency_file": "sagemaker_requirements_test.txt"}',
+                '{"dependency_file": null}',
                 "--distribution",
                 "mpirun",
                 "--user_nproc_per_node",
